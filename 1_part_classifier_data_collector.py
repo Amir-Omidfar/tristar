@@ -78,7 +78,7 @@ class DataCollector:
                                 file_path = os.path.join(subfolder_path, file_name)
                                 self.data.append((file_path, label))
                                 #copy file into training dataset with ground_truth_subfolder in the beginning of the file name
-                                new_file_path = os.path.join(self.training_dataset_path, label + "_ground_truth", subfolder + "_" + file_name)
+                                new_file_path = os.path.join(self.training_dataset_path, label + "_ground_truth", "test_"+subfolder + "_" + file_name)
                                 shutil.copyfile(file_path, new_file_path)
         return self.data
 
