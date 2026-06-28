@@ -53,6 +53,7 @@ anomaly detection
     conda activate tristar_test
     ```
 2. Download the dataset from the link above and place it inside the repository at the root level.
+3. 
 ## Supervised Learning Method:
 1. First classify the item type from the given 4 classes: 1. Brackets (white, brown, blakc) or Metal plate.
 2. Then detect whether it's a defect or not. 
@@ -84,29 +85,85 @@ anomaly detection
 Class mapping found: {'bracket_black': 0, 'bracket_brown': 1, 'bracket_white': 2, 'metal_plate': 3}
 Loaded 665 training images, 190 validation images, and 96 test images.
 
+### Evaluating model on the completely unseen test set...
+
+| CLASSIFICATION REPORT: |        |          |         |    |
+|------------------------|--------|----------|---------|----|
+| precision              | recall | f1-score | support |    |
+| bracket_black          | 1.00   | 1.00     | 1.00    | 44 |
+| bracket_brown          | 1.00   | 1.00     | 1.00    | 23 |
+| bracket_white          | 1.00   | 1.00     | 1.00    | 16 |
+| metal_plate            | 1.00   | 1.00     | 1.00    | 13 |
+| accuracy               | 1.00   | 96       |         |    |
+| macro avg              | 1.00   | 1.00     | 1.00    | 96 |
+| weighted avg           | 1.00   | 1.00     | 1.00    | 96 |
+
+### CONFUSION MATRIX:
+
+| True \ Pred   | bracket_black | bracket_brown | bracket_white | metal_plate |
+|---------------|---------------|---------------|---------------|-------------|
+| bracket_black | 44            | 0             | 0             | 0           |
+| bracket_brown | 0             | 23            | 0             | 0           |
+| bracket_white | 0             | 0             | 16            | 0           |
+| metal_plate   | 0             | 0             | 0             | 13          |
+
+## Stage 2 
+Once the part type is defined, UNET model is trained to detect defects.
+Given the imbalance in the dataset for good and bad parts:
+1. Change the loss function to be dice and cross entrophy 
+2. Use data augmentation for training with more bad samples to avoid background bias and false negative.
+
+
+### Black Bracket
+Unet without offline aug:
 ============================================================
-Evaluating model on the completely unseen test set...
+STAGE 2 PERFORMANCE METRIC
+------------------------------------------------------------
+Mean Intersection over Union (mIoU) on Test Set: 0.8150
 ============================================================
 
-CLASSIFICATION REPORT:
-               precision    recall  f1-score   support
-
-bracket_black       1.00      1.00      1.00        44
-bracket_brown       1.00      1.00      1.00        23
-bracket_white       1.00      1.00      1.00        16
-  metal_plate       1.00      1.00      1.00        13
-
-     accuracy                           1.00        96
-    macro avg       1.00      1.00      1.00        96
- weighted avg       1.00      1.00      1.00        96
-
+Unet with offline aug:
 ============================================================
-CONFUSION MATRIX:
+STAGE 2 PERFORMANCE METRIC
+------------------------------------------------------------
+Mean Intersection over Union (mIoU) on Test Set: 0.6177
 ============================================================
-True \ Pred     bracket_black  bracket_brown  bracket_white  metal_plate    
-----------------------------------------------------------------------------
-bracket_black   44             0              0              0              
-bracket_brown   0              23             0              0              
-bracket_white   0              0              16             0              
-metal_plate     0              0              0              13             
+
+Unet with augmentation without data leakage:
+============================================================
+STAGE 2 PERFORMANCE METRIC
+------------------------------------------------------------
+Mean Intersection over Union (mIoU) on Test Set: 0.8770
+============================================================
+
+
+### Brown Bracket
+============================================================
+STAGE 2 PERFORMANCE METRIC
+------------------------------------------------------------
+Mean Intersection over Union (mIoU) on Test Set: 0.8113
+============================================================
+
+### White Bracket
+============================================================
+STAGE 2 PERFORMANCE METRIC
+------------------------------------------------------------
+Mean Intersection over Union (mIoU) on Test Set: 0.7778
+============================================================
+
+### Metal Plate
+============================================================
+STAGE 2 PERFORMANCE METRIC
+------------------------------------------------------------
+Mean Intersection over Union (mIoU) on Test Set: 0.9056
+============================================================
+
+------------------------
+First time running on test data, had zero correct detection on white brackets. So changing the loss function to dice+focal to deal with large sea of white pixels.
+
+## White Bracket with focal loss
+============================================================
+STAGE 2 PERFORMANCE METRIC
+------------------------------------------------------------
+Mean Intersection over Union (mIoU) on Test Set: 0.7814
 ============================================================

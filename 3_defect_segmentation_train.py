@@ -8,11 +8,13 @@ import glob
 import torch
 import torch.nn as nn
 import torch.optim as optim
+import torch.nn.functional as F
 from torch.utils.data import Dataset, DataLoader, random_split
 from PIL import Image
 import torchvision.transforms.functional as TF
 import segmentation_models_pytorch as smp
 import numpy as np
+import cv2
 
 # ==========================================================
 # 1. CUSTOM SYNCHRONIZED DATASET
@@ -78,6 +80,44 @@ class BCEWithDiceLoss(nn.Module):
     def forward(self, y_pred, y_true):
         return self.bce(y_pred, y_true) + self.dice(y_pred, y_true)
 
+#Dice Loss + Focal Loss
+class DiceFocalLoss(nn.Module):
+    def __init__(self, alpha=1.0, gamma=2.0, dice_weight=1.0, focal_weight=1.0, smooth=1e-6):
+        super(DiceFocalLoss, self).__init__()
+        self.alpha = alpha          # Focal loss balancing parameter
+        self.gamma = gamma          # Focal loss focusing parameter (higher = focuses more on hard defects)
+        self.dice_weight = dice_weight
+        self.focal_weight = focal_weight
+        self.smooth = smooth
+
+    def forward(self, y_pred, y_true):
+        # Ensure correct shapes for calculation
+        y_pred = y_pred.view(-1)
+        y_true = y_true.view(-1).float()
+        
+        # Convert logits to probabilities safely
+        probs = torch.sigmoid(y_pred)
+        probs = torch.clamp(probs, self.smooth, 1.0 - self.smooth)
+        
+        # ----------------------------------------------------------
+        # 1. BINARY FOCAL LOSS CALCULATION
+        # ----------------------------------------------------------
+        # Penalizes the model heavily when it confidently guesses "background (0)" for a true defect (1)
+        bce = F.binary_cross_entropy_with_logits(y_pred, y_true, reduction='none')
+        p_t = probs * y_true + (1 - probs) * (1 - y_true)
+        focal_loss = self.alpha * ((1 - p_t) ** self.gamma) * bce
+        focal_loss = focal_loss.mean()
+
+        # ----------------------------------------------------------
+        # 2. DICE LOSS CALCULATION
+        # ----------------------------------------------------------
+        # Measures overlap directly to ensure small white-on-white scratches don't get ignored
+        intersection = (probs * y_true).sum()
+        dice_coef = (2. * intersection + self.smooth) / (probs.sum() + y_true.sum() + self.smooth)
+        dice_loss = 1.0 - dice_coef
+
+        # Combined loss weighted appropriately
+        return (self.focal_weight * focal_loss) + (self.dice_weight * dice_loss)
 
 # ==========================================================
 # 3. SEGMENTATION TRAINING MANAGER CLASS
@@ -91,6 +131,13 @@ class UNetSegmentationModel:
         self.EPOCHS = 15
         self.LEARNING_RATE = 2e-4
         self.SAVE_PATH = 'best_stage2_unet_resnet34_'+part_name+'.pth'
+        self.part_name = part_name
+        self.training_data_bad_samples_multiplier = {
+            "bracket_black": 6,
+            "bracket_brown": 4,
+            "bracket_white": 4,
+            "metal_plate": 1
+        }
 
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         print(f"Using device for Stage 2: {self.device}")
@@ -144,6 +191,7 @@ class UNetSegmentationModel:
                 aug_mask_filename = f"{os.path.splitext(image_file_name)[0]}_aug_{i}_mask.png"
                 aug_image.save(os.path.join(self.IMAGE_DIR, aug_image_filename))
                 aug_mask.save(os.path.join(self.MASK_DIR, aug_mask_filename))
+    
     def prepare_data(self):
         full_dataset = SegmentationDataset(self.IMAGE_DIR, self.MASK_DIR)
         total_size = len(full_dataset)
@@ -164,6 +212,57 @@ class UNetSegmentationModel:
 
         print(f"Loaded {len(self.train_dataset)} train, {len(self.val_dataset)} val, and {len(self.test_dataset)} test pairs.")
 
+    def prepare_data_aug(self):
+        # 1. Base initialization from your raw data folders
+        full_dataset = SegmentationDataset(self.IMAGE_DIR, self.MASK_DIR)
+        total_size = len(full_dataset)
+        
+        # Standard structural split
+        train_size = int(0.7 * total_size)
+        val_size = int(0.2 * total_size)
+        test_size = total_size - train_size - val_size
+        
+        # Split using a fixed seed to get stable raw assignments
+        base_train, self.val_dataset, self.test_dataset = random_split(
+            full_dataset, [train_size, val_size, test_size],
+            generator=torch.Generator().manual_seed(42)
+        )
+        
+        # 2. OVERSAMPLE ONLY WITHIN THE TRAINING SET TO PREVENT LEAKAGE
+        balanced_train_indices = []
+        
+        for idx in base_train.indices:
+            img_path = full_dataset.image_paths[idx]
+            
+            # Check if this training path belongs to a bad sample
+            if "train_good" not in img_path and "test_good" not in img_path:
+                # Multiply this bad index instance inside the training pool to match weights
+                #balanced_train_indices.extend([idx] * 4)
+                balanced_train_indices.extend([idx] * self.training_data_bad_samples_multiplier.get(self.part_name, 4))
+            else:
+                balanced_train_indices.append(idx)
+                
+        # Create a customized subset using our oversampled indices
+        self.train_dataset = torch.utils.data.Subset(full_dataset, balanced_train_indices)
+        
+        # 3. Build DataLoaders
+        self.train_loader = DataLoader(self.train_dataset, batch_size=self.BATCH_SIZE, shuffle=True)
+        self.val_loader = DataLoader(self.val_dataset, batch_size=self.BATCH_SIZE, shuffle=False)
+        self.test_loader = DataLoader(self.test_dataset, batch_size=self.BATCH_SIZE, shuffle=False)
+        
+        print(f"Oversampled Training Pool Size: {len(self.train_dataset)}")
+        print(f"Validation Pool Size: {len(self.val_dataset)}")
+        print(f"Strict Unseen Test Pool Size: {len(self.test_dataset)}")
+    
+    def remove_aug_data(self):
+        # Remove augmented data (if needed)
+        for image_file_name in os.listdir(self.IMAGE_DIR):
+            if "_aug_" in image_file_name:
+                os.remove(os.path.join(self.IMAGE_DIR, image_file_name))
+        for mask_file_name in os.listdir(self.MASK_DIR):
+            if "_aug_" in mask_file_name:
+                os.remove(os.path.join(self.MASK_DIR, mask_file_name))
+
     def setup_model(self):
         # Create U-Net with a pre-trained ResNet34 encoder
         self.model = smp.Unet(
@@ -175,6 +274,11 @@ class UNetSegmentationModel:
         ).to(self.device)
 
         self.criterion = BCEWithDiceLoss()
+        if self.part_name == "bracket_white":
+            print("="*30)
+            print("⚠️ Using Dice + Focal Loss for bracket_white due to white sea pixels")
+            print("="*30)
+            self.criterion = DiceFocalLoss()  # Use Dice + Focal for bracket_white due to class imbalance
         self.optimizer = optim.Adam(self.model.parameters(), lr=self.LEARNING_RATE)
 
     def train(self):
@@ -301,8 +405,8 @@ class UNetSegmentationModel:
                         axes[2].imshow(p_mask.squeeze(), cmap='gray')
                         axes[2].set_title(f"Predicted Mask (IoU: {iou:.2f})")
                         axes[2].axis('off')
-                        
-                        output_img_name = f"stage2_test_sample_{plot_count}.png"
+
+                        output_img_name = f"stage2_test_sample_{self.part_name}_{plot_count}.png"
                         plt.tight_layout()
                         plt.savefig(output_img_name, bbox_inches='tight')
                         plt.close()
@@ -318,10 +422,12 @@ class UNetSegmentationModel:
         return 
 
 if __name__ == "__main__":
-    unet_pipeline = UNetSegmentationModel("training_dataset/bracket_black","training_dataset/bracket_black_ground_truth","bracket_black")
+    unet_pipeline = UNetSegmentationModel("training_dataset/bracket_white","training_dataset/bracket_white_ground_truth","bracket_white")
     #unet_pipeline.augment_data()
-    unet_pipeline.count_samples()
-    unet_pipeline.prepare_data()
+    #unet_pipeline.count_samples()
+    #unet_pipeline.remove_aug_data()
+    #unet_pipeline.count_samples()
+    unet_pipeline.prepare_data_aug()
     unet_pipeline.setup_model()
     unet_pipeline.train()
     unet_pipeline.evaluate_model_on_test_set()
