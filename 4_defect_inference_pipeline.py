@@ -11,6 +11,10 @@ import torchvision.transforms.functional as TF
 from torchvision.models import resnet18
 import segmentation_models_pytorch as smp
 import scipy.ndimage as ndimage
+from ultralytics import YOLO
+
+white_bracket_yolo_model = YOLO("/Users/ApplePro/Desktop/gitProjects/tristar/runs/detect/yolo11_white_bracket-4/weights/best.pt")
+
 
 class IndustrialInspectionLine:
     def __init__(self, stage1_weights_path, weights_directory="."):
@@ -89,27 +93,38 @@ class IndustrialInspectionLine:
             if part_type in self.unet_models:
                 target_unet = self.unet_models[part_type]
                 unet_logits = target_unet(input_tensor)
+                is_white_bracket = False
                 if part_type == 'bracket_white':
-                    pred_probabilities = torch.sigmoid(unet_logits)
-                    pred_mask_bin = (pred_probabilities > confidence_cutoff).cpu().numpy().squeeze()
+                    #pred_probabilities = torch.sigmoid(unet_logits)
+                    #pred_mask_bin = (pred_probabilities > confidence_cutoff).cpu().numpy().squeeze()
 
                     # Apply a binary opening operation to clean up standalone noise clusters
                     # This removes stray background pixels while keeping true defect lines intact
-                    cleaned_mask = ndimage.binary_opening(pred_mask_bin, structure=np.ones((3, 3))).astype(np.float32)
-                    defect_pixel_count = np.sum(cleaned_mask)
-                else:
+                    #cleaned_mask = ndimage.binary_opening(pred_mask_bin, structure=np.ones((3, 3))).astype(np.float32)
+                    #defect_pixel_count = np.sum(cleaned_mask)
+                    results = white_bracket_yolo_model(image_path)
+                    boxes = results[0].boxes
 
+                    if len(boxes) > 0:
+                        verdict = "REJECT (Defective Part)"
+                        details = f"Detected {len(boxes)} defects using YOLO11 detection frame."
+                        print(f"{image_path},   {verdict},   {details}")
+                    else:
+                        verdict = "PASS (Good Part)"
+                        details = "no defects"
+                        print(f"{image_path},   {verdict}, {details}")
+                    is_white_bracket = True
+                else:
                     pred_probabilities = torch.sigmoid(unet_logits)
                     pred_mask_bin = (pred_probabilities > confidence_cutoff).float()
-                    
                     defect_pixel_count = torch.sum(pred_mask_bin).item()
-                    
-                if defect_pixel_count >= pixel_threshold:
-                    verdict = "REJECT (Defective Part)"
-                else:
-                    verdict = "PASS (Good Part)"
-                    
-                details = f"Defect cluster area: {int(defect_pixel_count)} pixels"
+                if not is_white_bracket:   
+                    if defect_pixel_count >= pixel_threshold:
+                        verdict = "REJECT (Defective Part)"
+                    else:
+                        verdict = "PASS (Good Part)"
+                        
+                    details = f"Defect cluster area: {int(defect_pixel_count)} pixels"
             else:
                 verdict = "PASS (Assumed Good - Segmentation Architecture Missing)"
                 details = f"No active U-Net model loaded for identified class: '{part_type}'"
@@ -124,7 +139,7 @@ if __name__ == "__main__":
         weights_directory='.' 
     )
     #run inference on all images
-    test_images = glob('training_dataset/bracket_white/test_*.png')
+    test_images = glob('training_dataset/*/test_*.png')
     count = 0
     t_count = 0
     for img_path in test_images:

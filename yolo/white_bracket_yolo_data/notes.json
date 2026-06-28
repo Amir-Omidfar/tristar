@@ -1,0 +1,17 @@
+{
+  "categories": [
+    {
+      "id": 0,
+      "name": "paint_defect"
+    },
+    {
+      "id": 1,
+      "name": "scratch"
+    }
+  ],
+  "info": {
+    "year": 2026,
+    "version": "1.0",
+    "contributor": "Label Studio"
+  }
+}

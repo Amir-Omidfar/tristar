@@ -63,8 +63,14 @@ class SegmentationDataset(Dataset):
         image = TF.to_tensor(image)
         image = TF.normalize(image, mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
         
-        mask = TF.to_tensor(mask)
-        mask = (mask > 0.5).float()  # Strict binarization (0.0 = Good, 1.0 = Defect)
+        mask_np = np.array(mask)
+        # If ANY pixel is greater than 0, flag it as a 1.0 float defect matrix layer
+        mask_bin = np.zeros_like(mask_np, dtype=np.float32)
+        mask_bin[mask_np > 0] = 1.0
+        
+        # Convert directly to a tensor and add the explicit channel dimension [1, H, W]
+        mask = torch.from_numpy(mask_bin).unsqueeze(0)
+        # ------------------------
 
         return image, mask
 
@@ -152,46 +158,6 @@ class UNetSegmentationModel:
                 bad_samples.append(image_file_name)
         print(f"Good samples: {len(good_samples)}, Bad samples: {len(bad_samples)}")
 
-    def augment_data(self):
-        # Count the number of good and bad samples
-        good_samples = []
-        bad_samples = []
-        for image_file_name in os.listdir(self.IMAGE_DIR):
-            if "train_good" in image_file_name or "test_good" in image_file_name:
-                good_samples.append(image_file_name)
-            else:
-                bad_samples.append(image_file_name)
-        print(f"Good samples: {len(good_samples)}, Bad samples: {len(bad_samples)}")
-        #augment bad samples by flipping and rotating until we have
-        # balanced dataset
-        for image_file_name in bad_samples:
-            image_path = os.path.join(self.IMAGE_DIR, image_file_name)
-            mask_path = os.path.join(self.MASK_DIR, image_file_name.replace(".png", "_mask.png"))
-            if not os.path.exists(mask_path):
-                mask_path = os.path.join(self.MASK_DIR, image_file_name.replace(".jpg", "_mask.png"))
-            if not os.path.exists(mask_path):
-                raise FileNotFoundError(f"Missing ground truth mask match for image: {image_file_name}")
-
-            # Load the original image and mask
-            image = Image.open(image_path).convert("RGB")
-            mask = Image.open(mask_path).convert("L")
-
-            # Create augmented versions (flip and rotate)
-            augmented_images = [
-                (TF.hflip(image), TF.hflip(mask)),
-                (TF.vflip(image), TF.vflip(mask)),
-                (TF.rotate(image, 90), TF.rotate(mask, 90)),
-                (TF.rotate(image, 180), TF.rotate(mask, 180)),
-                (TF.rotate(image, 270), TF.rotate(mask, 270))
-            ]
-
-            # Save augmented images and masks
-            for i, (aug_image, aug_mask) in enumerate(augmented_images):
-                aug_image_filename = f"{os.path.splitext(image_file_name)[0]}_aug_{i}.png"
-                aug_mask_filename = f"{os.path.splitext(image_file_name)[0]}_aug_{i}_mask.png"
-                aug_image.save(os.path.join(self.IMAGE_DIR, aug_image_filename))
-                aug_mask.save(os.path.join(self.MASK_DIR, aug_mask_filename))
-    
     def prepare_data(self):
         full_dataset = SegmentationDataset(self.IMAGE_DIR, self.MASK_DIR)
         total_size = len(full_dataset)
@@ -254,15 +220,6 @@ class UNetSegmentationModel:
         print(f"Validation Pool Size: {len(self.val_dataset)}")
         print(f"Strict Unseen Test Pool Size: {len(self.test_dataset)}")
     
-    def remove_aug_data(self):
-        # Remove augmented data (if needed)
-        for image_file_name in os.listdir(self.IMAGE_DIR):
-            if "_aug_" in image_file_name:
-                os.remove(os.path.join(self.IMAGE_DIR, image_file_name))
-        for mask_file_name in os.listdir(self.MASK_DIR):
-            if "_aug_" in mask_file_name:
-                os.remove(os.path.join(self.MASK_DIR, mask_file_name))
-
     def setup_model(self):
         # Create U-Net with a pre-trained ResNet34 encoder
         self.model = smp.Unet(
@@ -421,11 +378,10 @@ class UNetSegmentationModel:
         print("=" * 60)
         return 
 
+     
 if __name__ == "__main__":
     unet_pipeline = UNetSegmentationModel("training_dataset/bracket_white","training_dataset/bracket_white_ground_truth","bracket_white")
-    #unet_pipeline.augment_data()
     #unet_pipeline.count_samples()
-    #unet_pipeline.remove_aug_data()
     #unet_pipeline.count_samples()
     unet_pipeline.prepare_data_aug()
     unet_pipeline.setup_model()

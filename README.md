@@ -167,3 +167,14 @@ STAGE 2 PERFORMANCE METRIC
 ------------------------------------------------------------
 Mean Intersection over Union (mIoU) on Test Set: 0.7814
 ============================================================
+
+Given the defects are very hard to distinguish on the white brackets and after not being successful with methods like CLAHE or changing detection threshold. I switched to a yolo model with two classes:
+1. scratch
+2. paint_defect
+To bound box the defect areas on the white bracket samples and trained a small models with only 30 annotated images in label studio.
+#### To run label studio:
+- Follow [quick start link](https://labelstud.io/quick-start/)
+```
+docker run -it -p 8080:8080 -v `pwd`/mydata:/label-studio/data heartexlabs/label-studio:latest
+```
+Running Yolo on the white_bracket addressed all the issues and now it can detect all the defects correctly on the white bracket samples.

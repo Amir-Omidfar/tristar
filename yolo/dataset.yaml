@@ -1,0 +1,9 @@
+# dataset.yaml
+path: /Users/ApplePro/Desktop/gitProjects/tristar/yolo/white_bracket_yolo_data # Parent directory path absolute or relative
+train: /Users/ApplePro/Desktop/gitProjects/tristar/yolo/white_bracket_yolo_data/images/                  # Location of training images (relative to path)
+val: /Users/ApplePro/Desktop/gitProjects/tristar/yolo/white_bracket_yolo_data/images/                    # For a quick test, we point validation to the same folder
+
+# Class configuration mapping your labels
+names:
+  0: scratch
+  1: paint_defect
