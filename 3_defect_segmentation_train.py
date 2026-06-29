@@ -380,8 +380,7 @@ class UNetSegmentationModel:
 
      
 if __name__ == "__main__":
-    unet_pipeline = UNetSegmentationModel("training_dataset/bracket_white","training_dataset/bracket_white_ground_truth","bracket_white")
-    #unet_pipeline.count_samples()
+    unet_pipeline = UNetSegmentationModel("training_dataset/metal_plate","training_dataset/metal_plate_ground_truth","metal_plate")
     #unet_pipeline.count_samples()
     unet_pipeline.prepare_data_aug()
     unet_pipeline.setup_model()
