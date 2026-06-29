@@ -1,5 +1,9 @@
-*.png
 *.DS_Store
 tempCodeRunnerFile.py
 *.pth
 *.txt
+stage_2_images/*
+mask_visualizations/*
+training_dataset/*
+anomaly_dataset/*
+yolo/white_bracket_yolo_data/*
