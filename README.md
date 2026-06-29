@@ -86,6 +86,7 @@ anomaly detection
 1. First classify the item type from the given 4 classes: 1. Brackets (white, brown, blakc) or Metal plate.
 2. Then detect whether it's a defect or not. 
 ***The colors and shapes are fundamentally different. A lightweight backbone like ResNet18 or MobileNetV3 will easily hit near-100% accuracy on this task with very little training.***
+```
                ┌──────────────┐
                │  Input Image │
                └──────┬───────┘
@@ -108,7 +109,7 @@ anomaly detection
 │ Stage 2A  │   │ Stage 2B  │   │ Stage 2C  │   │ Stage 2D  │
 │Defect Det.│   │Defect Det.│   │Defect Det.│   │Defect Det.│
 └───────────┘   └───────────┘   └───────────┘   └───────────┘
-
+```
 ## Resnet18 is used for the first part and here's the performance:
 Class mapping found: {'bracket_black': 0, 'bracket_brown': 1, 'bracket_white': 2, 'metal_plate': 3}
 Loaded 665 training images, 190 validation images, and 96 test images.
