@@ -178,8 +178,12 @@ To bound box the defect areas on the white bracket samples and trained a small m
 ```
 docker run -it -p 8080:8080 -v `pwd`/mydata:/label-studio/data heartexlabs/label-studio:latest
 ```
-Running Yolo on the white_bracket addressed all the issues and now it can detect all the defects correctly on the white bracket samples.
-
+Running Yolo on the white_bracket addressed all the issues and now it can detect all the defects correctly on the white bracket samples:
+![F1 Curve](runs/detect/yolo11_white_bracket-4/BoxF1_curve.png)
+![Precision Recall](runs/detect/yolo11_white_bracket-4/BoxPR_curve.png)
+![Confusion Matrix](runs/detect/yolo11_white_bracket-4/confusion_matrix.png)
+![Box P Curve](runs/detect/yolo11_white_bracket-4/BoxP_curve.png)
+![Box R Curve](runs/detect/yolo11_white_bracket-4/BoxR_curve.png)
 Brown parts had a small 5 miss detections as well which I would have done the same steps as in white bracket to optimize the model performance.
 
 
